@@ -9,6 +9,7 @@ CATEGORIAS = (
     # Vivienda / Hogar
     "Limpieza",
     "Mantenimiento Hogar",
+    "Expensas",
     # Transporte
     "Público",
     "Taxi",
@@ -18,6 +19,8 @@ CATEGORIAS = (
     "Agua",
     "Internet",
     "Teléfono",
+    "Inmobiliario",
+    "Municipal",
     # Suscripciones / Tecnología
     "Spotify",
     "ChatBot",

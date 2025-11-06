@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import aiosqlite
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
-from telegram import Update
+from telegram import InputFile, Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -14,9 +14,10 @@ from telegram.ext import (
     filters,
 )
 
-from src.db import add_expense, init_db
+from src.db import add_expense, get_user_expenses, init_db
 from src.llm_call import ExpenseExtraction, llm_call
 from src.parse_expenses_message import parse_expenses_message
+from src.rows_to_csv_bytes import rows_to_csv_bytes
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN", "")
@@ -48,10 +49,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(
         (
-            "Enviá un gasto de esta forma: <monto> <comentario> o <comentario> <monto>\n"
+            "Enviá los gastos con esta estructura:\n"
+            "<monto> <comentario>\n"
+            "o\n"
+            "<comentario> <monto>\n"
             "ejemplos:\n"
-            "   '15.50 almuerzo'\n"
-            "   'super 45,20'"
+            "   15.50 almuerzo\n"
+            "   super 45,20\n"
+            "   comer afuera 4500"
         )
     )
 
@@ -84,7 +89,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_id=update.message.message_id,
         chat_id=update.effective_chat.id,
         user_id=update.effective_user.id,
-        date_iso=datetime.now(timezone.utc).isoformat(),
+        date=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         value=value,
         category=expense_extraction.category,
         currency=expense_extraction.currency,
@@ -96,8 +101,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not update.message.text:
+        return
+
+    if not is_owner(update, OWNER_ID):
+        await update.message.reply_text("🚫 Access denied")
+        return
+
+    if not update.effective_user or not update.effective_chat:
+        return
+
+    conn = context.bot_data[DB_CONN]
+    rows = await get_user_expenses(conn, user_id=update.effective_user.id)
+
+    bio = rows_to_csv_bytes(rows)
+
+    await update.message.reply_document(
+        document=InputFile(bio), caption="Here’s your CSV 👇"
+    )
+
+
 tg_app = Application.builder().token(TOKEN).updater(None).build()
 tg_app.add_handler(CommandHandler("start", start))
+tg_app.add_handler(CommandHandler("report", csv_command))
 tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 

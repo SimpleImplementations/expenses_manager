@@ -5,3 +5,4 @@ __pycache__/
 .env
 /locale
 /db
+/csv_exports
