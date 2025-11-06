@@ -17,7 +17,7 @@ async def init_db(conn: aiosqlite.Connection) -> None:
             value REAL NOT NULL,
             category TEXT NOT NULL,
             currency TEXT NOT NULL,
-            comment TEXT NOT NULL
+            message TEXT NOT NULL
         )
         """
     )
@@ -33,14 +33,14 @@ async def add_expense(
     value: float,
     category: str,
     currency: str,
-    comment: str,
+    message: str,
 ) -> None:
     await conn.execute(
         """
-        INSERT INTO expenses (message_id, chat_id, user_id, date, value, category, currency, comment)
+        INSERT INTO expenses (message_id, chat_id, user_id, date, value, category, currency, message)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (message_id, chat_id, user_id, date, value, category, currency, comment),
+        (message_id, chat_id, user_id, date, value, category, currency, message),
     )
     await conn.commit()
 
@@ -50,7 +50,7 @@ class ExpenseRow(BaseModel):
     value: float
     category: str
     currency: str
-    comment: str
+    message: str
 
 
 async def get_user_expenses(
@@ -59,7 +59,7 @@ async def get_user_expenses(
 ) -> List[ExpenseRow]:
     cursor = await conn.execute(
         """
-        SELECT date, value, category, currency, comment
+        SELECT date, value, category, currency, message
         FROM expenses
         WHERE user_id = ?
         ORDER BY id DESC
@@ -75,7 +75,7 @@ async def get_user_expenses(
             value=row[1],
             category=row[2],
             currency=row[3],
-            comment=row[4],
+            message=row[4],
         )
         for row in rows
     ]

@@ -16,7 +16,6 @@ from telegram.ext import (
 
 from src.db import add_expense, get_user_expenses, init_db
 from src.llm_call import ExpenseExtraction, llm_call
-from src.parse_expenses_message import parse_expenses_message
 from src.rows_to_csv_bytes import rows_to_csv_bytes
 
 load_dotenv()
@@ -49,14 +48,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(
         (
-            "Enviá los gastos con esta estructura:\n"
-            "<monto> <comentario>\n"
-            "o\n"
-            "<comentario> <monto>\n"
-            "ejemplos:\n"
-            "   15.50 almuerzo\n"
-            "   super 45,20\n"
-            "   comer afuera 4500"
+            "Enviá un mensaje con un gasto incluyendo monto y comentario, y si la moneda no es ARS, podés aclararla.\n\n"
+            "Ejemplos:\n"
+            '- "café en la facu 150"\n'
+            '- "20.5 USD regalo cumple"\n'
+            '- "netflix 799,99"\n\n'
         )
     )
 
@@ -72,16 +68,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.effective_chat:
         return
 
-    parsed_message = parse_expenses_message(update.message.text)
-    if not parsed_message:
-        await update.message.reply_text(
-            "🚫 No se pudo interpretar el mensaje. Por favor, usá el formato: <monto> <comentario> o <comentario> <monto>."
-        )
-        return
-
-    value, comment = parsed_message
-
-    expense_extraction: ExpenseExtraction = llm_call(comment)
+    expense_extraction: ExpenseExtraction = llm_call(update.message.text)
 
     conn = context.bot_data[DB_CONN]
     await add_expense(
@@ -90,14 +77,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id,
         user_id=update.effective_user.id,
         date=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-        value=value,
+        value=expense_extraction.value,
         category=expense_extraction.category,
         currency=expense_extraction.currency,
-        comment=comment,
+        message=update.message.text,
     )
 
     await update.message.reply_text(
-        f'✅ Gasto de {value} registrado en categoría "{expense_extraction.category}".'
+        f'✅ Gasto de {expense_extraction.value} registrado en categoría "{expense_extraction.category}".'
     )
 
 

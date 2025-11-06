@@ -11,6 +11,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 class ExpenseExtraction(BaseModel):
+    value: float
     category: str
     currency: str
 
