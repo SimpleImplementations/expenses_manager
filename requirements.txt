@@ -1,0 +1,7 @@
+python-telegram-bot[webhooks]==21.*
+fastapi
+uvicorn
+python-dotenv
+aiosqlite
+openai
+pytest
