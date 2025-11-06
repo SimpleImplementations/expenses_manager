@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import aiosqlite
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
-from telegram import InputFile, Update
+from telegram import BotCommand, InputFile, Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -47,14 +47,44 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None:
         return
     await update.message.reply_text(
-        (
-            "Enviá un mensaje con un gasto incluyendo monto y comentario, y si la moneda no es ARS, podés aclararla.\n\n"
-            "Ejemplos:\n"
-            '- "café en la facu 150"\n'
-            '- "20.5 USD regalo cumple"\n'
-            '- "netflix 799,99"\n\n'
-        )
+        "👋 Bienvenido.\n\n"
+        "Enviá un mensaje con un gasto incluyendo monto y comentario, y si la moneda no es ARS, podés aclararla.\n\n"
+        "Ejemplos:\n"
+        '- "café en la facu 150"\n'
+        '- "20.5 USD regalo cumple"\n'
+        '- "netflix 799,99"\n\n'
+        "ℹ️ Usá /help para ver todos los comandos."
     )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+    if not is_owner(update, OWNER_ID):
+        await update.message.reply_text("🚫 Access denied")
+        return
+
+    text = (
+        "📖 *Ayuda*\n\n"
+        "Comandos disponibles:\n"
+        "• /help — muestra esta ayuda\n"
+        "• /start — introducción rápida\n"
+        "• /report — descarga tus gastos en CSV\n\n"
+        "Además, podés registrar gastos simplemente escribiendo el texto del gasto, por ejemplo:\n"
+        "• `almuerzo 2500`\n"
+        "• `20.5 USD regalo cumple`\n"
+        "• `netflix 799,99`\n"
+    )
+    await update.message.reply_markdown_v2(text)
+
+
+async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message is None:
+        return
+    msg = "No conozco ese comando. Probá /help."
+    if not is_owner(update, OWNER_ID):
+        msg = "🚫 Access denied"
+    await update.message.reply_text(msg)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -105,14 +135,16 @@ async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     bio = rows_to_csv_bytes(rows)
 
     await update.message.reply_document(
-        document=InputFile(bio), caption="Here’s your CSV 👇"
+        document=InputFile(bio), caption="CSV descargado 👇"
     )
 
 
 tg_app = Application.builder().token(TOKEN).updater(None).build()
 tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(CommandHandler("report", csv_command))
+tg_app.add_handler(CommandHandler("help", help_command))
 tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+tg_app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 
 
 @asynccontextmanager
@@ -122,6 +154,14 @@ async def lifespan(app: FastAPI):
     tg_app.bot_data[DB_CONN] = db_conn
 
     await tg_app.initialize()
+    await tg_app.bot.set_my_commands(
+        [
+            BotCommand("help", "Ver ayuda"),
+            BotCommand("start", "Introducción"),
+            BotCommand("report", "Descargar gastos en CSV"),
+        ]
+    )
+
     await tg_app.bot.set_webhook(url=PUBLIC_URL + WEBHOOK_PATH)
 
     yield
