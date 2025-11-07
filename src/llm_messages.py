@@ -1,47 +1,46 @@
 CATEGORIAS = (
     # Finanzas
-    "Tarjeta de Crédito",
-    "Inversiones",
+    "TARJETA DE CRÉDITO",
+    "INVERSIONES",
     # Comida
-    "Supermercado",
-    "Salir a Comer",
-    "Comida a Domicilio",
+    "SUPERMERCADO",
+    "SALIR A COMER",
+    "COMIDA A DOMICILIO",
     # Vivienda / Hogar
-    "Limpieza",
-    "Mantenimiento Hogar",
-    "Expensas",
+    "LIMPIEZA",
+    "MANTENIMIENTO HOGAR",
+    "EXPENSAS",
     # Transporte
-    "Público",
-    "Taxi",
+    "PÚBLICO",
+    "TAXI",
     # Servicios básicos
-    "Electricidad",
-    "Gas",
-    "Agua",
-    "Internet",
-    "Teléfono",
-    "Inmobiliario",
-    "Municipal",
+    "ELECTRICIDAD",
+    "GAS",
+    "AGUA",
+    "INTERNET",
+    "TELÉFONO",
+    "INMOBILIARIO",
+    "MUNICIPAL",
     # Suscripciones / Tecnología
-    "Spotify",
-    "ChatBot",
-    "Tecnología",
+    "SPOTIFY",
+    "CHATBOT",
+    "TECNOLOGÍA",
     # Educación / Salud / Bienestar
-    "Educación",
-    "Gimnasio",
-    "Ropa",
-    "Salud",
+    "EDUCACIÓN",
+    "GIMNASIO",
+    "ROPA",
+    "SALUD",
     # Ocio / Sociales
-    "Salidas Sociales",
-    "Viajes",
-    "Regalos y Eventos",
+    "SALIDAS SOCIALES",
+    "VIAJES",
+    "REGALOS",
     # Mascotas
-    "Mascotas",
-    # Seguros
-    "Seguros",
+    "MASCOTAS",
     # Misceláneo
-    "Test",
-    "Otros",
+    "TEST",
+    "OTROS",
 )
+
 
 CONTEXT = f"""El mensaje describe un gasto de dinero personal de un usuario enviado por un corto mensaje de texto.
 Extrae:

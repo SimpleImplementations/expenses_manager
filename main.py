@@ -15,7 +15,14 @@ from telegram.ext import (
     filters,
 )
 
-from src.db import add_expense, get_user_expenses, init_db, remove_expense_by_message_id
+from src.db import (
+    add_expense,
+    get_user_expenses_report,
+    init_db,
+    is_user_registered,
+    register_user,
+    remove_expense_by_message_id,
+)
 from src.llm_call import ExpenseExtraction, llm_call
 from src.rows_to_csv_bytes import rows_to_csv_bytes
 from user_interface_messages import HELP_MESSAGE, START_MESSAGE
@@ -50,6 +57,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if msg is None:
         return
+
+    if not update.effective_user or not update.effective_chat:
+        return
+
+    conn = context.bot_data[DB_CONN]
+    if not await is_user_registered(conn, update.effective_user.id):
+        await register_user(conn, update.effective_user.id)
 
     await msg.reply_text(START_MESSAGE, parse_mode="HTML")
 
@@ -89,9 +103,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.effective_chat:
         return
 
+    conn = context.bot_data[DB_CONN]
+    if not await is_user_registered(conn, update.effective_user.id):
+        await register_user(conn, update.effective_user.id)
+
     expense_extraction: ExpenseExtraction = llm_call(msg.text)
 
-    conn = context.bot_data[DB_CONN]
     await add_expense(
         conn=conn,
         message_id=msg.message_id,
@@ -196,7 +213,7 @@ async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     conn = context.bot_data[DB_CONN]
-    rows = await get_user_expenses(conn, user_id=update.effective_user.id)
+    rows = await get_user_expenses_report(conn, user_id=update.effective_user.id)
 
     bio = rows_to_csv_bytes(rows)
 
