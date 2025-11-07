@@ -18,6 +18,7 @@ from telegram.ext import (
 from src.db import add_expense, get_user_expenses, init_db, remove_expense_by_message_id
 from src.llm_call import ExpenseExtraction, llm_call
 from src.rows_to_csv_bytes import rows_to_csv_bytes
+from user_interface_messages import HELP_MESSAGE, START_MESSAGE
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN", "")
@@ -50,15 +51,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if msg is None:
         return
 
-    await msg.reply_text(
-        "👋 Bienvenido.\n\n"
-        "Enviá un mensaje con un gasto incluyendo monto y comentario, y si la moneda no es ARS, podés aclararla.\n\n"
-        "Ejemplos:\n"
-        '- "café en la facu 150"\n'
-        '- "20.5 USD regalo cumple"\n'
-        '- "netflix 799,99"\n\n'
-        "ℹ️ Usá /help para ver todos los comandos."
-    )
+    await msg.reply_text(START_MESSAGE)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -70,18 +63,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(ACCESS_DENIED)
         return
 
-    text = (
-        "📖 *Ayuda*\n\n"
-        "Comandos disponibles:\n"
-        "• /help — muestra esta ayuda\n"
-        "• /start — introducción rápida\n"
-        "• /report — descarga tus gastos en CSV\n\n"
-        "Además, podés registrar gastos simplemente escribiendo el texto del gasto, por ejemplo:\n"
-        "• `almuerzo 2500`\n"
-        "• `20.5 USD regalo cumple`\n"
-        "• `netflix 799,99`\n"
-    )
-    await msg.reply_markdown_v2(text)
+    await msg.reply_markdown_v2(HELP_MESSAGE)
 
 
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -165,6 +147,42 @@ async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cmd_msg = update.message
+    if not cmd_msg:
+        return
+
+    if not is_whitelisted(update, WHITELIST_IDS):
+        await cmd_msg.reply_text(ACCESS_DENIED)
+        return
+
+    if not update.effective_user:
+        return
+
+    user_id = update.effective_user.id
+    target_msg_id = None
+
+    # If the user replied to the original expense message
+    if cmd_msg.reply_to_message:
+        target_msg_id = cmd_msg.reply_to_message.message_id
+
+    # If nothing identified:
+    if target_msg_id is None:
+        await cmd_msg.reply_text(
+            "Usá /delete respondiendo al mensaje del gasto, o /delete <message_id>."
+        )
+        return
+
+    # Delete record strictly by (user_id + message_id)
+    await remove_expense_by_message_id(
+        conn=context.bot_data[DB_CONN],
+        message_id=target_msg_id,
+        user_id=user_id,
+    )
+
+    await cmd_msg.reply_text("🗑️ Gasto eliminado.")
+
+
 async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.message
     if not msg or not msg.text:
@@ -189,9 +207,10 @@ async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 tg_app = Application.builder().token(TOKEN).updater(None).build()
-tg_app.add_handler(CommandHandler("start", start))
-tg_app.add_handler(CommandHandler("report", csv_command))
 tg_app.add_handler(CommandHandler("help", help_command))
+tg_app.add_handler(CommandHandler("start", start))
+tg_app.add_handler(CommandHandler("delete", delete_command))
+tg_app.add_handler(CommandHandler("report", csv_command))
 tg_app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 tg_app.add_handler(
     MessageHandler(
@@ -218,6 +237,7 @@ async def lifespan(app: FastAPI):
         [
             BotCommand("help", "Ver ayuda"),
             BotCommand("start", "Introducción"),
+            BotCommand("delete", "Borra el mensaje citado"),
             BotCommand("report", "Descargar gastos en CSV"),
         ]
     )
