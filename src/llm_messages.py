@@ -43,11 +43,13 @@ CATEGORIAS = (
     "Otros",
 )
 
-CONTEXT = f"""El mensaje describe un gasto de dinero personal de un usuario.
+CONTEXT = f"""El mensaje describe un gasto de dinero personal de un usuario enviado por un corto mensaje de texto.
 Extrae:
 - valor: monto numérico del gasto (usar punto como separador decimal).
 - categoría: la categoría del gasto. Las opciones son: {", ".join(CATEGORIAS)}.
 - moneda: la moneda del gasto (por defecto ARS si no se menciona).
+Si no hay buena coincidencia con las categorías, usar "Otros".
+Si no hay valor, asignar 0.0.
 """
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ from src.rows_to_csv_bytes import rows_to_csv_bytes
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "")
-DB_PATH = "db/messages.db"
+DB_PATH = os.getenv("DB_PATH", "")
 OWNER_ID = int(os.getenv("OWNER_ID", ""))
 WEBHOOK_PATH = "/webhook"
 DB_CONN = "db_conn"
@@ -182,9 +182,10 @@ async def telegram_webhook(req: Request):
     return {"ok": True}
 
 
-@app.get("/")
+@app.get("/health")
 async def health():
     return {"ok": True}
 
 
 # uvicorn main:app --host 0.0.0.0 --port 8080
+# docker compose up --build
