@@ -62,7 +62,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
     if not is_whitelisted(update, WHITELIST_IDS):
-        await update.message.reply_text("🚫 Access denied")
+        await update.message.reply_text("Access Denied")
         return
 
     text = (

@@ -18,7 +18,7 @@ class ExpenseExtraction(BaseModel):
 
 def llm_call(message: str) -> ExpenseExtraction:
     response = client.responses.parse(
-        model="gpt-5-mini",
+        model="gpt-4.1-mini",  # "gpt-5-mini",
         input=[
             {"role": "system", "content": CONTEXT},
             {"role": "user", "content": message},
