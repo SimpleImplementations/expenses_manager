@@ -6,3 +6,4 @@ __pycache__/
 /locale
 /db
 /csv_exports
+/docker_db
