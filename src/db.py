@@ -45,6 +45,22 @@ async def add_expense(
     await conn.commit()
 
 
+async def remove_expense_by_message_id(
+    conn: aiosqlite.Connection,
+    message_id: int,
+    user_id: int,
+) -> bool:
+    cursor = await conn.execute(
+        """
+        DELETE FROM expenses
+        WHERE message_id = ? AND user_id = ?
+        """,
+        (message_id, user_id),
+    )
+    await conn.commit()
+    return cursor.rowcount > 0  # True if a row was deleted
+
+
 class ExpenseRow(BaseModel):
     date: str
     value: float

@@ -15,7 +15,7 @@ from telegram.ext import (
     filters,
 )
 
-from src.db import add_expense, get_user_expenses, init_db
+from src.db import add_expense, get_user_expenses, init_db, remove_expense_by_message_id
 from src.llm_call import ExpenseExtraction, llm_call
 from src.rows_to_csv_bytes import rows_to_csv_bytes
 
@@ -26,7 +26,7 @@ DB_PATH = os.getenv("DB_PATH", "")
 WHITELIST_IDS = [int(x) for x in os.getenv("WHITELIST_IDS", "").split(",") if x.strip()]
 WEBHOOK_PATH = "/webhook"
 DB_CONN = "db_conn"
-
+ACCESS_DENIED = "Access Denied"
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 assert TOKEN
@@ -43,11 +43,14 @@ def is_whitelisted(update: Update, owner_id: List[int]) -> bool:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
     if not is_whitelisted(update, WHITELIST_IDS):
         return
-    if update.message is None:
+
+    if msg is None:
         return
-    await update.message.reply_text(
+
+    await msg.reply_text(
         "👋 Bienvenido.\n\n"
         "Enviá un mensaje con un gasto incluyendo monto y comentario, y si la moneda no es ARS, podés aclararla.\n\n"
         "Ejemplos:\n"
@@ -59,10 +62,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
+    msg = update.message
+    if not msg or not msg.text:
         return
+
     if not is_whitelisted(update, WHITELIST_IDS):
-        await update.message.reply_text("Access Denied")
+        await msg.reply_text(ACCESS_DENIED)
         return
 
     text = (
@@ -76,55 +81,97 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `20.5 USD regalo cumple`\n"
         "• `netflix 799,99`\n"
     )
-    await update.message.reply_markdown_v2(text)
+    await msg.reply_markdown_v2(text)
 
 
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_whitelisted(update, WHITELIST_IDS):
+        msg = ACCESS_DENIED
+
     if update.message is None:
         return
+
     msg = "No conozco ese comando. Probá /help."
-    if not is_whitelisted(update, WHITELIST_IDS):
-        msg = "🚫 Access denied"
     await update.message.reply_text(msg)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
+    msg = update.message
+    if not msg or not msg.text:
         return
 
     if not is_whitelisted(update, WHITELIST_IDS):
-        await update.message.reply_text("🚫 Access denied")
+        await msg.reply_text(ACCESS_DENIED)
         return
 
     if not update.effective_user or not update.effective_chat:
         return
 
-    expense_extraction: ExpenseExtraction = llm_call(update.message.text)
+    expense_extraction: ExpenseExtraction = llm_call(msg.text)
 
     conn = context.bot_data[DB_CONN]
     await add_expense(
         conn=conn,
-        message_id=update.message.message_id,
+        message_id=msg.message_id,
         chat_id=update.effective_chat.id,
         user_id=update.effective_user.id,
         date=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         value=expense_extraction.value,
         category=expense_extraction.category,
         currency=expense_extraction.currency,
-        message=update.message.text,
+        message=msg.text,
     )
 
-    await update.message.reply_text(
+    await msg.reply_text(
         f'✅ Gasto de {expense_extraction.value} registrado en categoría "{expense_extraction.category}".'
     )
 
 
-async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message or not update.message.text:
+async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg or not msg.text:
         return
 
     if not is_whitelisted(update, WHITELIST_IDS):
-        await update.message.reply_text("🚫 Access denied")
+        await msg.reply_text(ACCESS_DENIED)
+        return
+
+    if not update.effective_user or not update.effective_chat:
+        return
+
+    await remove_expense_by_message_id(
+        conn=context.bot_data[DB_CONN],
+        message_id=msg.message_id,
+        user_id=update.effective_user.id,
+    )
+
+    expense_extraction: ExpenseExtraction = llm_call(msg.text)
+
+    conn = context.bot_data[DB_CONN]
+    await add_expense(
+        conn=conn,
+        message_id=msg.message_id,
+        chat_id=update.effective_chat.id,
+        user_id=update.effective_user.id,
+        date=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        value=expense_extraction.value,
+        category=expense_extraction.category,
+        currency=expense_extraction.currency,
+        message=msg.text,
+    )
+
+    await msg.reply_text(
+        f'✅ Modificación exitosa. ✅ Gasto de {expense_extraction.value} registrado en categoría "{expense_extraction.category}".'
+    )
+
+
+async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg = update.message
+    if not msg or not msg.text:
+        return
+
+    if not is_whitelisted(update, WHITELIST_IDS):
+        await msg.reply_text(ACCESS_DENIED)
         return
 
     if not update.effective_user or not update.effective_chat:
@@ -135,17 +182,26 @@ async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     bio = rows_to_csv_bytes(rows)
 
-    await update.message.reply_document(
-        document=InputFile(bio), caption="CSV descargado 👇"
-    )
+    await msg.reply_document(document=InputFile(bio), caption="Acá están tus gastos 🧾")
 
 
 tg_app = Application.builder().token(TOKEN).updater(None).build()
 tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(CommandHandler("report", csv_command))
 tg_app.add_handler(CommandHandler("help", help_command))
-tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 tg_app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
+tg_app.add_handler(
+    MessageHandler(
+        filters.UpdateType.EDITED_MESSAGE & filters.TEXT,
+        handle_message_edit,
+    )
+)
+tg_app.add_handler(
+    MessageHandler(
+        filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE,
+        handle_message,
+    )
+)
 
 
 @asynccontextmanager
