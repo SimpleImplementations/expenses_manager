@@ -182,7 +182,10 @@ async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     bio = rows_to_csv_bytes(rows)
 
-    await msg.reply_document(document=InputFile(bio), caption="Acá están tus gastos 🧾")
+    await msg.reply_document(
+        document=InputFile(bio),
+        caption="✅ Aquí tienes el registro de tus gastos en formato CSV 💸",
+    )
 
 
 tg_app = Application.builder().token(TOKEN).updater(None).build()
