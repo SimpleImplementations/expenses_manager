@@ -51,7 +51,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if msg is None:
         return
 
-    await msg.reply_text(START_MESSAGE)
+    await msg.reply_text(START_MESSAGE, parse_mode="HTML")
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -63,7 +63,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(ACCESS_DENIED)
         return
 
-    await msg.reply_markdown_v2(HELP_MESSAGE)
+    await msg.reply_text(HELP_MESSAGE, parse_mode="HTML")
 
 
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
