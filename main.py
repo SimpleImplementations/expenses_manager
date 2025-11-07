@@ -1,6 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import List
 
 import aiosqlite
 from dotenv import load_dotenv
@@ -22,7 +23,7 @@ load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "")
 DB_PATH = os.getenv("DB_PATH", "")
-OWNER_ID = int(os.getenv("OWNER_ID", ""))
+WHITELIST_IDS = [int(x) for x in os.getenv("WHITELIST_IDS", "").split(",") if x.strip()]
 WEBHOOK_PATH = "/webhook"
 DB_CONN = "db_conn"
 
@@ -31,18 +32,18 @@ os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 assert TOKEN
 assert PUBLIC_URL
 assert DB_PATH
-assert OWNER_ID
+assert WHITELIST_IDS
 
 if not TOKEN or not PUBLIC_URL:
     raise ValueError("BOT_TOKEN and PUBLIC_URL must be set in .env file")
 
 
-def is_owner(update: Update, owner_id: int) -> bool:
-    return bool(update.effective_user and update.effective_user.id == owner_id)
+def is_whitelisted(update: Update, owner_id: List[int]) -> bool:
+    return bool(update.effective_user and update.effective_user.id in owner_id)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update, OWNER_ID):
+    if not is_whitelisted(update, WHITELIST_IDS):
         return
     if update.message is None:
         return
@@ -60,7 +61,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
-    if not is_owner(update, OWNER_ID):
+    if not is_whitelisted(update, WHITELIST_IDS):
         await update.message.reply_text("🚫 Access denied")
         return
 
@@ -82,7 +83,7 @@ async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None:
         return
     msg = "No conozco ese comando. Probá /help."
-    if not is_owner(update, OWNER_ID):
+    if not is_whitelisted(update, WHITELIST_IDS):
         msg = "🚫 Access denied"
     await update.message.reply_text(msg)
 
@@ -91,7 +92,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
-    if not is_owner(update, OWNER_ID):
+    if not is_whitelisted(update, WHITELIST_IDS):
         await update.message.reply_text("🚫 Access denied")
         return
 
@@ -122,7 +123,7 @@ async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not update.message or not update.message.text:
         return
 
-    if not is_owner(update, OWNER_ID):
+    if not is_whitelisted(update, WHITELIST_IDS):
         await update.message.reply_text("🚫 Access denied")
         return
 
