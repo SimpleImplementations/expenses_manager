@@ -12,7 +12,16 @@ def rows_to_csv_bytes(rows: List[ExpenseRow]) -> io.BytesIO:
     columns = list(ExpenseRow.model_fields.keys())
 
     writer = csv.DictWriter(sio, fieldnames=columns)
-    writer.writeheader()
+
+    header_labels = [
+        "Fecha",
+        "Monto",
+        "Categoría",
+        "Moneda",
+        "Mensaje",
+    ]  # This list must match the fields in ExpenseRow
+    sio.write(",".join(header_labels) + "\n")
+
     for r in rows:
         writer.writerow(r.model_dump())
 
