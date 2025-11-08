@@ -17,12 +17,15 @@ from telegram.ext import (
 
 from src.db import (
     add_expense,
+    add_global_category,
     get_user_categories,
     get_user_expenses_report,
     init_db,
     is_user_registered,
+    link_user_category_by_name,
     register_user,
     remove_expense_by_message_id,
+    unlink_user_category_by_name,
 )
 from src.llm_call import ExpenseExtraction, llm_call
 from src.rows_to_csv_bytes import rows_to_csv_bytes
@@ -216,6 +219,79 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await cmd_msg.reply_text("🗑️ Gasto eliminado.")
 
 
+async def addcategory_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg:
+        return
+    if not is_whitelisted(update, WHITELIST_IDS):
+        await msg.reply_text(ACCESS_DENIED)
+        return
+    if not update.effective_user:
+        return
+
+    name = (" ".join(context.args) if context.args else "").strip().upper()
+    if not name:
+        await msg.reply_text("Uso: /addcategory <nombre>")
+        return
+
+    conn = context.bot_data[DB_CONN]
+    try:
+        await add_global_category(conn, name)
+        linked = await link_user_category_by_name(conn, update.effective_user.id, name)
+        if linked:
+            await msg.reply_text(f'✅ Categoría "{name}" agregada a tu perfil.')
+        else:
+            await msg.reply_text(f'ℹ️ La categoría "{name}" ya estaba en tu perfil.')
+    except ValueError as e:
+        await msg.reply_text(f"⚠️ {e}")
+
+
+async def removecategory_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg:
+        return
+    if not is_whitelisted(update, WHITELIST_IDS):
+        await msg.reply_text(ACCESS_DENIED)
+        return
+    if not update.effective_user:
+        return
+
+    name = (" ".join(context.args) if context.args else "").strip()
+    if not name:
+        await msg.reply_text("Uso: /removecategory <nombre>")
+        return
+
+    conn = context.bot_data[DB_CONN]
+    try:
+        removed = await unlink_user_category_by_name(
+            conn, update.effective_user.id, name
+        )
+        if removed:
+            await msg.reply_text(f'🗑️ Categoría "{name}" quitada de tu perfil.')
+        else:
+            await msg.reply_text(f'ℹ️ La categoría "{name}" no estaba en tu perfil.')
+    except ValueError as e:
+        await msg.reply_text(f"⚠️ {e}")
+
+
+async def categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg:
+        return
+    if not is_whitelisted(update, WHITELIST_IDS):
+        await msg.reply_text(ACCESS_DENIED)
+        return
+    if not update.effective_user:
+        return
+
+    conn = context.bot_data[DB_CONN]
+    cats = await get_user_categories(conn, user_id=update.effective_user.id)
+
+    cats = sorted(cats, key=str.casefold)
+    pretty = "\n".join(f"• {c}" for c in cats)
+    await msg.reply_text(f"📂 Tus categorías:\n{pretty}")
+
+
 async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.message
     if not msg or not msg.text:
@@ -243,6 +319,9 @@ tg_app = Application.builder().token(TOKEN).updater(None).build()
 tg_app.add_handler(CommandHandler("help", help_command))
 tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(CommandHandler("delete", delete_command))
+tg_app.add_handler(CommandHandler("addcategory", addcategory_command))
+tg_app.add_handler(CommandHandler("removecategory", removecategory_command))
+tg_app.add_handler(CommandHandler("categories", categories_command))
 tg_app.add_handler(CommandHandler("report", csv_command))
 tg_app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 tg_app.add_handler(
@@ -272,6 +351,9 @@ async def lifespan(app: FastAPI):
             BotCommand("start", "Introducción"),
             BotCommand("delete", "Borra el mensaje citado"),
             BotCommand("report", "Descargar gastos en CSV"),
+            BotCommand("addcategory", "Agregar una categoría a tu perfil"),
+            BotCommand("removecategory", "Quitar una categoría de tu perfil"),
+            BotCommand("categories", "Listar tus categorías"),
         ]
     )
 
