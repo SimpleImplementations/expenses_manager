@@ -26,8 +26,7 @@ async def init_db(conn: aiosqlite.Connection) -> None:
     await conn.execute(
         """
         CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE
+            name TEXT PRIMARY KEY
         )
         """
     )
@@ -36,10 +35,10 @@ async def init_db(conn: aiosqlite.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS user_categories (
             user_id INTEGER NOT NULL,
-            category_id INTEGER NOT NULL,
-            PRIMARY KEY (user_id, category_id),
+            category_name TEXT NOT NULL,
+            PRIMARY KEY (user_id, category_name),
             FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-            FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+            FOREIGN KEY (category_name) REFERENCES categories(name) ON DELETE CASCADE
         )
         """
     )
@@ -53,11 +52,11 @@ async def init_db(conn: aiosqlite.Connection) -> None:
             user_id INTEGER NOT NULL,
             date TEXT NOT NULL,
             value REAL NOT NULL,
-            category_id INTEGER NOT NULL,
+            category_name TEXT NOT NULL,
             currency TEXT NOT NULL,
             message TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-            FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
+            FOREIGN KEY (category_name) REFERENCES categories(name) ON DELETE RESTRICT
         )
         """
     )
@@ -70,14 +69,14 @@ async def init_db(conn: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_uc_user ON user_categories(user_id)"
     )
     await conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_uc_cat ON user_categories(category_id)"
+        "CREATE INDEX IF NOT EXISTS idx_uc_cat ON user_categories(category_name)"
     )
     await conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(user_id, id)"
     )
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date)")
     await conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category_id)"
+        "CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category_name)"
     )
 
     # Seed the global catalog with your defaults (once)
@@ -94,22 +93,12 @@ async def init_db(conn: aiosqlite.Connection) -> None:
 # -----------------------------
 async def register_user(conn: aiosqlite.Connection, user_id: int) -> None:
     """Create the user and link default categories to them."""
-    await conn.execute(
-        "INSERT INTO users (user_id) VALUES (?)",
-        (user_id,),
-    )
+    await conn.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
 
     # Link the default categories for this user
-    cur = await conn.execute(
-        f"SELECT id, name FROM categories WHERE name IN ({','.join(['?'] * len(BASE_CATEGORIES))})",
-        tuple(BASE_CATEGORIES),
-    )
-    rows = await cur.fetchall()
-    await cur.close()
-
     await conn.executemany(
-        "INSERT INTO user_categories (user_id, category_id) VALUES (?, ?)",
-        [(user_id, row[0]) for row in rows],
+        "INSERT OR IGNORE INTO user_categories (user_id, category_name) VALUES (?, ?)",
+        [(user_id, n.strip()) for n in BASE_CATEGORIES if n.strip()],
     )
 
     await conn.commit()
@@ -150,16 +139,16 @@ async def link_user_category_by_name(
     if not name:
         raise ValueError("Category name cannot be empty.")
 
-    cur = await conn.execute("SELECT id FROM categories WHERE name = ?", (name,))
-    row = await cur.fetchone()
+    # Ensure the category exists globally
+    cur = await conn.execute("SELECT 1 FROM categories WHERE name = ?", (name,))
+    exists = await cur.fetchone()
     await cur.close()
-    if not row:
-        return False  # category doesn't exist in the global catalog (add later if you want)
-    category_id = row[0]
+    if not exists:
+        return False
 
     cur = await conn.execute(
-        "INSERT OR IGNORE INTO user_categories (user_id, category_id) VALUES (?, ?)",
-        (user_id, category_id),
+        "INSERT OR IGNORE INTO user_categories (user_id, category_name) VALUES (?, ?)",
+        (user_id, name),
     )
     await conn.commit()
     linked = cur.rowcount > 0
@@ -176,16 +165,9 @@ async def unlink_user_category_by_name(
     name = name.strip()
     if not name:
         raise ValueError("Category name cannot be empty.")
-    cur = await conn.execute("SELECT id FROM categories WHERE name = ?", (name,))
-    row = await cur.fetchone()
-    await cur.close()
-    if not row:
-        await conn.commit()
-        return False
-    cat_id = row[0]
     cur = await conn.execute(
-        "DELETE FROM user_categories WHERE user_id = ? AND category_id = ?",
-        (user_id, cat_id),
+        "DELETE FROM user_categories WHERE user_id = ? AND category_name = ?",
+        (user_id, name),
     )
     removed = cur.rowcount > 0
     await cur.close()
@@ -196,11 +178,10 @@ async def unlink_user_category_by_name(
 async def get_user_categories(conn: aiosqlite.Connection, user_id: int) -> List[str]:
     cur = await conn.execute(
         """
-        SELECT c.name
+        SELECT uc.category_name
         FROM user_categories uc
-        JOIN categories c ON c.id = uc.category_id
         WHERE uc.user_id = ?
-        ORDER BY c.name
+        ORDER BY uc.category_name
         """,
         (user_id,),
     )
@@ -233,21 +214,20 @@ async def add_expense(
     currency: str,
     message: str,
 ) -> None:
-    # Resolve global category id by name
-    cur = await conn.execute(
-        "SELECT id FROM categories WHERE name = ?", (category.strip(),)
-    )
-    cat = await cur.fetchone()
-    await cur.close()
-    if not cat:
-        raise ValueError(f"Category '{category}' does not exist in catalog.")
+    if not category:
+        raise ValueError("Category name cannot be empty.")
 
-    category_id = cat[0]
+    # Ensure category exists globally
+    cur = await conn.execute("SELECT 1 FROM categories WHERE name = ?", (category,))
+    exists = await cur.fetchone()
+    await cur.close()
+    if not exists:
+        raise ValueError(f"Category '{category}' does not exist in catalog.")
 
     # Ensure the user is linked to this category
     cur = await conn.execute(
-        "SELECT 1 FROM user_categories WHERE user_id = ? AND category_id = ?",
-        (user_id, category_id),
+        "SELECT 1 FROM user_categories WHERE user_id = ? AND category_name = ?",
+        (user_id, category),
     )
     link = await cur.fetchone()
     await cur.close()
@@ -258,10 +238,10 @@ async def add_expense(
 
     await conn.execute(
         """
-        INSERT INTO expenses (message_id, chat_id, user_id, date, value, category_id, currency, message)
+        INSERT INTO expenses (message_id, chat_id, user_id, date, value, category_name, currency, message)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (message_id, chat_id, user_id, date, value, category_id, currency, message),
+        (message_id, chat_id, user_id, date, value, category, currency, message),
     )
     await conn.commit()
 
@@ -284,9 +264,8 @@ async def get_user_expenses_report(
 ) -> List[ExpenseRow]:
     cursor = await conn.execute(
         """
-        SELECT e.date, e.value, c.name AS category, e.currency, e.message
+        SELECT e.date, e.value, e.category_name AS category, e.currency, e.message
         FROM expenses e
-        JOIN categories c ON c.id = e.category_id
         WHERE e.user_id = ?
         ORDER BY e.id DESC
         """,
