@@ -26,6 +26,7 @@ from src.db import (
 )
 from src.llm_call import ExpenseExtraction, llm_call
 from src.rows_to_csv_bytes import rows_to_csv_bytes
+from src.utils import to_int_if_whole
 from user_interface_messages import HELP_MESSAGE, START_MESSAGE
 
 load_dotenv()
@@ -130,7 +131,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await msg.reply_text(
-        f'✅ Gasto de {expense_extraction.value} registrado en categoría "{expense_extraction.category}".'
+        f'✅ Gasto de {to_int_if_whole(expense_extraction.value)} registrado en categoría "{expense_extraction.category}".'
     )
 
 
@@ -175,7 +176,7 @@ async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
     await msg.reply_text(
-        f'✅ Modificación exitosa. ✅ Gasto de {expense_extraction.value} registrado en categoría "{expense_extraction.category}".'
+        f'✅ Modificación exitosa. ✅ Gasto de {to_int_if_whole(expense_extraction.value)} registrado en categoría "{expense_extraction.category}".'
     )
 
 
