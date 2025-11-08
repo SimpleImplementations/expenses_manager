@@ -22,7 +22,7 @@ HELP_MESSAGE: Final[str] = (
     "• /start — introducción rápida\n"
     "• /report — descarga tus gastos en CSV\n"
     "• /delete — elimina un gasto\n"
-    "• /addcategory <code>&lt;nombre&gt;</code> — agrega y vincula una categoría (si no existe, se crea)\n"
+    "• /addcategory <code>&lt;nombre&gt;</code> — agrega y vincula una categoría\n"
     "• /removecategory <code>&lt;nombre&gt;</code> — quita una categoría de tu perfil\n"
     "• /categories — lista tus categorías actuales\n\n"
     "<b>Cómo usar el bot:</b>\n"
