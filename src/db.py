@@ -3,48 +3,7 @@ from typing import List
 import aiosqlite
 from pydantic import BaseModel
 
-CATEGORIES = (
-    # Finanzas
-    "TARJETA DE CRÉDITO",
-    "INVERSIONES",
-    # Comida
-    "SUPERMERCADO",
-    "SALIR A COMER",
-    "COMIDA A DOMICILIO",
-    # Vivienda / Hogar
-    "LIMPIEZA",
-    "MANTENIMIENTO HOGAR",
-    "EXPENSAS",
-    # Transporte
-    "PÚBLICO",
-    "TAXI",
-    # Servicios básicos
-    "ELECTRICIDAD",
-    "GAS",
-    "AGUA",
-    "INTERNET",
-    "TELÉFONO",
-    "INMOBILIARIO",
-    "MUNICIPAL",
-    # Suscripciones / Tecnología
-    "SPOTIFY",
-    "CHATBOT",
-    "TECNOLOGÍA",
-    # Educación / Salud / Bienestar
-    "EDUCACIÓN",
-    "GIMNASIO",
-    "ROPA",
-    "SALUD",
-    # Ocio / Sociales
-    "SALIDAS SOCIALES",
-    "VIAJES",
-    "REGALOS",
-    # Mascotas
-    "MASCOTAS",
-    # Misceláneo
-    "TEST",
-    "OTROS",
-)
+from src.base_categories import BASE_CATEGORIES
 
 
 # -----------------------------
@@ -124,7 +83,7 @@ async def init_db(conn: aiosqlite.Connection) -> None:
     # Seed the global catalog with your defaults (once)
     await conn.executemany(
         "INSERT OR IGNORE INTO categories(name) VALUES (?)",
-        [(n,) for n in CATEGORIES],
+        [(n,) for n in BASE_CATEGORIES],
     )
 
     await conn.commit()
@@ -142,8 +101,8 @@ async def register_user(conn: aiosqlite.Connection, user_id: int) -> None:
 
     # Link the default categories for this user
     cur = await conn.execute(
-        f"SELECT id, name FROM categories WHERE name IN ({','.join(['?'] * len(CATEGORIES))})",
-        tuple(CATEGORIES),
+        f"SELECT id, name FROM categories WHERE name IN ({','.join(['?'] * len(BASE_CATEGORIES))})",
+        tuple(BASE_CATEGORIES),
     )
     rows = await cur.fetchall()
     await cur.close()

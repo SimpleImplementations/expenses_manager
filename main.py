@@ -17,6 +17,7 @@ from telegram.ext import (
 
 from src.db import (
     add_expense,
+    get_user_categories,
     get_user_expenses_report,
     init_db,
     is_user_registered,
@@ -107,7 +108,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_user_registered(conn, update.effective_user.id):
         await register_user(conn, update.effective_user.id)
 
-    expense_extraction: ExpenseExtraction = llm_call(msg.text)
+    user_categories = await get_user_categories(
+        conn=context.bot_data[DB_CONN],
+        user_id=update.effective_user.id,
+    )
+
+    expense_extraction: ExpenseExtraction = llm_call(
+        msg.text, categories=user_categories
+    )
 
     await add_expense(
         conn=conn,
@@ -144,7 +152,14 @@ async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_id=update.effective_user.id,
     )
 
-    expense_extraction: ExpenseExtraction = llm_call(msg.text)
+    user_categories = await get_user_categories(
+        conn=context.bot_data[DB_CONN],
+        user_id=update.effective_user.id,
+    )
+
+    expense_extraction: ExpenseExtraction = llm_call(
+        msg.text, categories=user_categories
+    )
 
     conn = context.bot_data[DB_CONN]
     await add_expense(
