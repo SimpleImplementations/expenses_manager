@@ -256,7 +256,7 @@ async def removecategory_command(update: Update, context: ContextTypes.DEFAULT_T
     if not update.effective_user:
         return
 
-    name = (" ".join(context.args) if context.args else "").strip()
+    name = (" ".join(context.args) if context.args else "").strip().upper()
     if not name:
         await msg.reply_text("Uso: /removecategory <nombre>")
         return
@@ -264,7 +264,7 @@ async def removecategory_command(update: Update, context: ContextTypes.DEFAULT_T
     conn = context.bot_data[DB_CONN]
     try:
         removed = await unlink_user_category_by_name(
-            conn, update.effective_user.id, name.upper()
+            conn, update.effective_user.id, name
         )
         if removed:
             await msg.reply_text(f'🗑️ Categoría "{name}" quitada de tu perfil.')
