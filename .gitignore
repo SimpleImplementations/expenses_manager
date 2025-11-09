@@ -2,7 +2,7 @@ __pycache__/
 /.venv*
 /.vscode
 /.mypy_cache
-.env
+.env*
 /locale
 /db
 /csv_exports

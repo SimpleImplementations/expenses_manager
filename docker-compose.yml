@@ -11,4 +11,4 @@ services:
     volumes:
       - ./main.py:/app/main.py
       - ./src:/app/src
-      - ./docker_db:/var/lib/bot
+      - ./db:/var/lib/bot

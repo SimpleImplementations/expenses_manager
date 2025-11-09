@@ -1,0 +1,30 @@
+services:
+  app:
+    build:
+      context: .
+      target: prod
+    env_file: .env.prod
+    environment:
+      DB_PATH: /var/lib/bot/bot.db
+    volumes:
+      - /srv/botdata:/var/lib/bot
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - app
+
+volumes:
+  caddydata:
+  caddyconfig:
