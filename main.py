@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -32,6 +34,9 @@ from src.rows_to_csv_bytes import rows_to_csv_bytes
 from src.utils import to_int_if_whole
 from user_interface_messages import HELP_MESSAGE, START_MESSAGE
 
+# -----------------------------------------------------------------------------
+# Env & basic setup
+# -----------------------------------------------------------------------------
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "")
@@ -40,17 +45,39 @@ WHITELIST_IDS = [int(x) for x in os.getenv("WHITELIST_IDS", "").split(",") if x.
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 DB_CONN = "db_conn"
 ACCESS_DENIED = "Access Denied"
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("telegram-boot")
 
 assert TOKEN
 assert PUBLIC_URL
 assert DB_PATH
 assert WHITELIST_IDS
-
 if not TOKEN or not PUBLIC_URL:
     raise ValueError("BOT_TOKEN and PUBLIC_URL must be set in .env file")
 
+# Normalize / validate URL parts early
+PUBLIC_URL = PUBLIC_URL.strip().rstrip("/")
+WEBHOOK_URL = WEBHOOK_URL.strip()
+if not PUBLIC_URL.startswith("https://"):
+    raise ValueError("PUBLIC_URL must start with https://")
+if not WEBHOOK_URL.startswith("/"):
+    raise ValueError("WEBHOOK_URL must start with '/'")
 
+WEBHOOK_FULL = f"{PUBLIC_URL}{WEBHOOK_URL}"
+if len(WEBHOOK_FULL) >= 256:
+    raise ValueError("Webhook URL is too long for Telegram (>= 256 chars)")
+
+# Ensure DB dir exists (if a directory is present)
+db_dir = os.path.dirname(DB_PATH)
+if db_dir:
+    os.makedirs(db_dir, exist_ok=True)
+
+
+# -----------------------------------------------------------------------------
+# Handlers
+# -----------------------------------------------------------------------------
 def is_whitelisted(update: Update, owner_id: List[int]) -> bool:
     return bool(update.effective_user and update.effective_user.id in owner_id)
 
@@ -59,10 +86,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not is_whitelisted(update, WHITELIST_IDS):
         return
-
     if msg is None:
         return
-
     if not update.effective_user or not update.effective_chat:
         return
 
@@ -77,21 +102,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg or not msg.text:
         return
-
     if not is_whitelisted(update, WHITELIST_IDS):
         await msg.reply_text(ACCESS_DENIED)
         return
-
     await msg.reply_text(HELP_MESSAGE, parse_mode="HTML")
 
 
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_whitelisted(update, WHITELIST_IDS):
         msg = ACCESS_DENIED
-
     if update.message is None:
         return
-
     msg = "No conozco ese comando. Probá /help."
     await update.message.reply_text(msg)
 
@@ -100,11 +121,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg or not msg.text:
         return
-
     if not is_whitelisted(update, WHITELIST_IDS):
         await msg.reply_text(ACCESS_DENIED)
         return
-
     if not update.effective_user or not update.effective_chat:
         return
 
@@ -113,10 +132,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await register_user(conn, update.effective_user.id)
 
     user_categories = await get_user_categories(
-        conn=context.bot_data[DB_CONN],
-        user_id=update.effective_user.id,
+        conn=context.bot_data[DB_CONN], user_id=update.effective_user.id
     )
-
     expense_extraction: ExpenseExtraction = llm_call(
         msg.text, categories=user_categories
     )
@@ -142,11 +159,9 @@ async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE
     msg = update.effective_message
     if not msg or not msg.text:
         return
-
     if not is_whitelisted(update, WHITELIST_IDS):
         await msg.reply_text(ACCESS_DENIED)
         return
-
     if not update.effective_user or not update.effective_chat:
         return
 
@@ -157,10 +172,8 @@ async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
     user_categories = await get_user_categories(
-        conn=context.bot_data[DB_CONN],
-        user_id=update.effective_user.id,
+        conn=context.bot_data[DB_CONN], user_id=update.effective_user.id
     )
-
     expense_extraction: ExpenseExtraction = llm_call(
         msg.text, categories=user_categories
     )
@@ -187,35 +200,27 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cmd_msg = update.message
     if not cmd_msg:
         return
-
     if not is_whitelisted(update, WHITELIST_IDS):
         await cmd_msg.reply_text(ACCESS_DENIED)
         return
-
     if not update.effective_user:
         return
 
     user_id = update.effective_user.id
     target_msg_id = None
 
-    # If the user replied to the original expense message
     if cmd_msg.reply_to_message:
         target_msg_id = cmd_msg.reply_to_message.message_id
 
-    # If nothing identified:
     if target_msg_id is None:
         await cmd_msg.reply_text(
             "Usá /delete respondiendo al mensaje del gasto, o /delete <message_id>."
         )
         return
 
-    # Delete record strictly by (user_id + message_id)
     await remove_expense_by_message_id(
-        conn=context.bot_data[DB_CONN],
-        message_id=target_msg_id,
-        user_id=user_id,
+        conn=context.bot_data[DB_CONN], message_id=target_msg_id, user_id=user_id
     )
-
     await cmd_msg.reply_text("🗑️ Gasto eliminado.")
 
 
@@ -286,7 +291,6 @@ async def categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     conn = context.bot_data[DB_CONN]
     cats = await get_user_categories(conn, user_id=update.effective_user.id)
-
     cats = sorted(cats, key=str.casefold)
     pretty = "\n".join(f"• {c}" for c in cats)
     await msg.reply_text(f"📂 Tus categorías:\n{pretty}")
@@ -296,17 +300,14 @@ async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     msg = update.message
     if not msg or not msg.text:
         return
-
     if not is_whitelisted(update, WHITELIST_IDS):
         await msg.reply_text(ACCESS_DENIED)
         return
-
     if not update.effective_user or not update.effective_chat:
         return
 
     conn = context.bot_data[DB_CONN]
     rows = await get_user_expenses_report(conn, user_id=update.effective_user.id)
-
     bio = rows_to_csv_bytes(rows)
 
     await msg.reply_document(
@@ -315,6 +316,9 @@ async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     )
 
 
+# -----------------------------------------------------------------------------
+# Telegram app & webhook helper
+# -----------------------------------------------------------------------------
 tg_app = Application.builder().token(TOKEN).updater(None).build()
 tg_app.add_handler(CommandHandler("help", help_command))
 tg_app.add_handler(CommandHandler("start", start))
@@ -326,8 +330,7 @@ tg_app.add_handler(CommandHandler("report", csv_command))
 tg_app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 tg_app.add_handler(
     MessageHandler(
-        filters.UpdateType.EDITED_MESSAGE & filters.TEXT,
-        handle_message_edit,
+        filters.UpdateType.EDITED_MESSAGE & filters.TEXT, handle_message_edit
     )
 )
 tg_app.add_handler(
@@ -338,6 +341,24 @@ tg_app.add_handler(
 )
 
 
+async def ensure_webhook(bot):
+    """Idempotently set the Telegram webhook; never crash the server if it fails."""
+    try:
+        info = await bot.get_webhook_info()
+        current = info.url or ""
+        if current == WEBHOOK_FULL:
+            logger.info("Webhook already set: %s", WEBHOOK_FULL)
+            return
+        logger.info("Setting webhook to %s (was: %s)", WEBHOOK_FULL, current)
+        await bot.set_webhook(url=WEBHOOK_FULL, drop_pending_updates=True)
+        logger.info("Webhook set OK")
+    except Exception as e:
+        logger.exception("Webhook setup skipped (non-fatal): %s", e)
+
+
+# -----------------------------------------------------------------------------
+# FastAPI app with lifespan
+# -----------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db_conn = await aiosqlite.connect(DB_PATH)
@@ -357,12 +378,17 @@ async def lifespan(app: FastAPI):
         ]
     )
 
-    await tg_app.bot.set_webhook(url=PUBLIC_URL + WEBHOOK_URL)
+    # Do not block startup; try to set webhook in background (non-fatal).
+    asyncio.create_task(ensure_webhook(tg_app.bot))
 
     yield
 
+    try:
+        await tg_app.bot.delete_webhook(drop_pending_updates=True)
+    except Exception as e:
+        logger.warning("delete_webhook failed (ignored): %s", e)
+
     await tg_app.shutdown()
-    await tg_app.bot.delete_webhook(drop_pending_updates=True)
     await db_conn.close()
 
 
@@ -375,6 +401,12 @@ async def telegram_webhook(req: Request):
     update = Update.de_json(data, tg_app.bot)
     await tg_app.process_update(update)
     return {"ok": True}
+
+
+# Optional: helps test from a browser/curl; harmless for Telegram
+@app.get(WEBHOOK_URL)
+async def telegram_webhook_get():
+    return {"ok": True, "method": "GET"}
 
 
 @app.get("/health")
