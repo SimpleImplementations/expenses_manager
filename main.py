@@ -33,11 +33,11 @@ from src.utils import to_int_if_whole
 from user_interface_messages import HELP_MESSAGE, START_MESSAGE
 
 load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN", "")
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "")
 DB_PATH = os.getenv("DB_PATH", "")
 WHITELIST_IDS = [int(x) for x in os.getenv("WHITELIST_IDS", "").split(",") if x.strip()]
-WEBHOOK_PATH = "/webhook"
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 DB_CONN = "db_conn"
 ACCESS_DENIED = "Access Denied"
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -357,7 +357,7 @@ async def lifespan(app: FastAPI):
         ]
     )
 
-    await tg_app.bot.set_webhook(url=PUBLIC_URL + WEBHOOK_PATH)
+    await tg_app.bot.set_webhook(url=PUBLIC_URL + WEBHOOK_URL)
 
     yield
 
@@ -369,7 +369,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-@app.post(WEBHOOK_PATH)
+@app.post(WEBHOOK_URL)
 async def telegram_webhook(req: Request):
     data = await req.json()
     update = Update.de_json(data, tg_app.bot)
