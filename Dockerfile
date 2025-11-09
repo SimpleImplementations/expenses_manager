@@ -22,4 +22,4 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
 FROM base AS prod
 RUN pip install --no-cache-dir gunicorn uvicorn[standard]
 ENV DB_PATH=/var/lib/bot/bot.db
-CMD ["gunicorn","-k","uvicorn.workers.UvicornWorker","main:app","--bind","0.0.0.0:8080","--workers","2","--timeout","30"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
