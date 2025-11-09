@@ -3,7 +3,7 @@ services:
     build:
       context: .
       target: prod
-    env_file: .env.prod
+    env_file: .env_prod
     environment:
       DB_PATH: /var/lib/bot/bot.db
     volumes:
