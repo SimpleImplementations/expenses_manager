@@ -9,3 +9,6 @@ scp -i ~/.ssh/telegram-bot-key.pem \
 # Deploy in deb
 
 ngrok http 8080
+
+# ssh EC2
+ssh -i ~/.ssh/telegram-bot-key.pem ec2-user@3.23.129.217
