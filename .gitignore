@@ -7,3 +7,4 @@ __pycache__/
 /db
 /csv_exports
 /docker_db
+/.pytest_cache

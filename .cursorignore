@@ -1,0 +1,18 @@
+# Cursor AI/Agent ignore file (gitignore syntax).
+# Blocks these paths from Cursor indexing and from AI features attaching/reading them via Cursor.
+
+# env / secrets
+.env*
+**/.env*
+
+# key material
+**/*.pem
+**/*.key
+**/id_rsa
+**/id_ed25519
+
+# local data / generated artifacts
+/db/
+/docker_db/
+/csv_exports/
+/locale/
