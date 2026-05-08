@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -7,7 +6,7 @@ from typing import List
 
 import aiosqlite
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from telegram import BotCommand, InputFile, Update
 from telegram.ext import (
     Application,
@@ -39,10 +38,8 @@ from user_interface_messages import HELP_MESSAGE, START_MESSAGE
 # -----------------------------------------------------------------------------
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-PUBLIC_URL = os.getenv("PUBLIC_URL", "")
 DB_PATH = os.getenv("DB_PATH", "")
 WHITELIST_IDS = [int(x) for x in os.getenv("WHITELIST_IDS", "").split(",") if x.strip()]
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 DB_CONN = "db_conn"
 ACCESS_DENIED = "Access Denied"
 
@@ -51,23 +48,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("telegram-boot")
 
 assert TOKEN
-assert PUBLIC_URL
 assert DB_PATH
 assert WHITELIST_IDS
-if not TOKEN or not PUBLIC_URL:
-    raise ValueError("BOT_TOKEN and PUBLIC_URL must be set in .env file")
-
-# Normalize / validate URL parts early
-PUBLIC_URL = PUBLIC_URL.strip().rstrip("/")
-WEBHOOK_URL = WEBHOOK_URL.strip()
-if not PUBLIC_URL.startswith("https://"):
-    raise ValueError("PUBLIC_URL must start with https://")
-if not WEBHOOK_URL.startswith("/"):
-    raise ValueError("WEBHOOK_URL must start with '/'")
-
-WEBHOOK_FULL = f"{PUBLIC_URL}{WEBHOOK_URL}"
-if len(WEBHOOK_FULL) >= 256:
-    raise ValueError("Webhook URL is too long for Telegram (>= 256 chars)")
+if not TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN must be set in environment")
 
 # Ensure DB dir exists (if a directory is present)
 db_dir = os.path.dirname(DB_PATH)
@@ -317,9 +301,9 @@ async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 # -----------------------------------------------------------------------------
-# Telegram app & webhook helper
+# Telegram app (long polling)
 # -----------------------------------------------------------------------------
-tg_app = Application.builder().token(TOKEN).updater(None).build()
+tg_app = Application.builder().token(TOKEN).build()
 tg_app.add_handler(CommandHandler("help", help_command))
 tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(CommandHandler("delete", delete_command))
@@ -341,21 +325,6 @@ tg_app.add_handler(
 )
 
 
-async def ensure_webhook(bot):
-    """Idempotently set the Telegram webhook; never crash the server if it fails."""
-    try:
-        info = await bot.get_webhook_info()
-        current = info.url or ""
-        if current == WEBHOOK_FULL:
-            logger.info("Webhook already set: %s", WEBHOOK_FULL)
-            return
-        logger.info("Setting webhook to %s (was: %s)", WEBHOOK_FULL, current)
-        await bot.set_webhook(url=WEBHOOK_FULL, drop_pending_updates=True)
-        logger.info("Webhook set OK")
-    except Exception as e:
-        logger.exception("Webhook setup skipped (non-fatal): %s", e)
-
-
 # -----------------------------------------------------------------------------
 # FastAPI app with lifespan
 # -----------------------------------------------------------------------------
@@ -366,6 +335,7 @@ async def lifespan(app: FastAPI):
     tg_app.bot_data[DB_CONN] = db_conn
 
     await tg_app.initialize()
+    await tg_app.start()
     await tg_app.bot.set_my_commands(
         [
             BotCommand("help", "Ver ayuda"),
@@ -378,35 +348,27 @@ async def lifespan(app: FastAPI):
         ]
     )
 
-    # Do not block startup; try to set webhook in background (non-fatal).
-    asyncio.create_task(ensure_webhook(tg_app.bot))
+    # Make sure we're not in webhook mode, then start polling.
+    try:
+        await tg_app.bot.delete_webhook(drop_pending_updates=True)
+    except Exception:
+        logger.exception("delete_webhook failed (ignored)")
+
+    await tg_app.updater.start_polling(drop_pending_updates=True)
 
     yield
 
     try:
-        await tg_app.bot.delete_webhook(drop_pending_updates=True)
+        await tg_app.updater.stop()
     except Exception as e:
-        logger.warning("delete_webhook failed (ignored): %s", e)
+        logger.warning("polling stop failed (ignored): %s", e)
 
+    await tg_app.stop()
     await tg_app.shutdown()
     await db_conn.close()
 
 
 app = FastAPI(lifespan=lifespan)
-
-
-@app.post(WEBHOOK_URL)
-async def telegram_webhook(req: Request):
-    data = await req.json()
-    update = Update.de_json(data, tg_app.bot)
-    await tg_app.process_update(update)
-    return {"ok": True}
-
-
-# Optional: helps test from a browser/curl; harmless for Telegram
-@app.get(WEBHOOK_URL)
-async def telegram_webhook_get():
-    return {"ok": True, "method": "GET"}
 
 
 @app.get("/health")

@@ -1,267 +1,114 @@
-# 🚀 Deploy Telegram Bot on AWS EC2 using Docker, Caddy (HTTPS), DuckDNS, and SQLite
+# 🚀 Deploy on an always-on Ubuntu server (long polling, no webhook)
 
-This is the complete step-by-step guide to deploy your Telegram bot on AWS EC2.  
-It includes everything we actually did, including real fixes to issues that came up.
+This guide deploys the bot on a **local Ubuntu server** (always on) using:
 
----
+- Docker + Docker Compose
+- A single container (`app`)
+- SQLite persisted to `/srv/botdata`
+- **Telegram long polling** (no public URL, no reverse proxy, no DuckDNS)
 
-## 1. Project Structure (Local)
-
-```
-csv_exports/
-db/
-locale/
-src/
-main.py
-requirements.txt
-.env               # local development only
-docker-compose.yml # local
-docker-compose.prod.yml # production/server
-Dockerfile
-```
-
-The bot uses:
-- FastAPI
-- python-telegram-bot (webhook mode)
-- SQLite database
-- Docker / Docker Compose
-- Caddy reverse proxy (HTTPS)
-- DuckDNS free domain
-
-We will deploy **two containers**:
-
-| Service | Description |
-|--------|-------------|
-| `app`  | FastAPI bot server (gunicorn + uvicorn) |
-| `caddy` | Reverse proxy + automatic Let’s Encrypt HTTPS |
+With polling, your server only needs **outbound** internet access. No ports need to be open to the public.
 
 ---
 
-## 2. Create AWS EC2 Server
+## 1. One-time setup on the Ubuntu server
 
-1. Go to AWS → EC2 → Launch Instance.
-2. Choose Image: **Amazon Linux 2023**.
-3. Instance type: `t2.micro` (Free Tier).
-4. Storage: 8–16 GB.
-5. Create a Security Group with:
-   - SSH (22) allow your IP
-   - HTTP (80) allow `0.0.0.0/0`
-   - HTTPS (443) allow `0.0.0.0/0`
-6. Launch instance and download `.pem` key.
-
-### Connect:
-```bash
-chmod 600 ~/.ssh/telegram-bot-key.pem
-ssh -i ~/.ssh/telegram-bot-key.pem ec2-user@YOUR_SERVER_IP
-```
-
----
-
-## 3. Install Docker + Compose
+Install Docker Engine + Compose plugin (Ubuntu):
 
 ```bash
-sudo yum update -y
-sudo yum install -y docker
-sudo systemctl enable docker
-sudo systemctl start docker
-sudo usermod -aG docker $USER
+sudo apt update
+sudo apt install -y docker.io docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
 newgrp docker
+docker --version
+docker compose version
 ```
 
-Install Docker Compose:
+Create a persistent data directory for SQLite:
+
 ```bash
-sudo curl -SL https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64   -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-docker-compose --version
+sudo mkdir -p /srv/botdata
+sudo chown -R "$USER:$USER" /srv/botdata
 ```
 
 ---
 
-## 4. Clone Your GitHub Repo (SSH)
+## 2. Get the code on the server
 
-Generate and show key:
 ```bash
-ssh-keygen -t ed25519 -C "ec2-bot"
-cat ~/.ssh/id_ed25519.pub
-```
-
-Copy this key → GitHub → Settings → SSH Keys → Add Key.
-
-Test:
-```bash
-ssh -T git@github.com
-```
-
-Clone:
-```bash
-git clone git@github.com:YOURUSERNAME/expenses_manager.git
-cd expenses_manager
+git clone <your-repo-url>
+cd money_manager
 ```
 
 ---
 
-## 5. Set Domain Using DuckDNS
+## 3. Create the env file (server-only)
 
-Go to https://www.duckdns.org  
-Create a domain, e.g.:
+Create `.env` in the repo root (this file must NOT be committed):
 
-```
-telegramexpensesbot.duckdns.org
-```
-
-Add your **EC2 public IP** to DuckDNS.
-
----
-
-## 6. Create Production Environment File
-
-```bash
-nano .env.prod
-```
-
-Put this inside:
 ```ini
 TELEGRAM_BOT_TOKEN=your_botfather_token
-WEBHOOK_URL=https://telegramexpensesbot.duckdns.org/telegram/webhook
-WEBHOOK_SECRET_TOKEN=a_random_long_secret
+WHITELIST_IDS=123456789,987654321
+OPENAI_API_KEY=your_openai_key
+
+# optional (compose already sets this, but keeping it here is fine too)
 DB_PATH=/var/lib/bot/bot.db
 ```
 
-Do **not** commit `.env.prod`.
+Notes:
+- `WHITELIST_IDS` are the Telegram user IDs allowed to use the bot.
+- `DB_PATH` is inside the container; the actual DB persists in `/srv/botdata` on the host.
 
 ---
 
-## 7. Dockerfile (Production)
-
-```dockerfile
-# ---- base ----
-FROM python:3.12-slim AS base
-WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app:/app/src
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-
-# ---- prod ----
-FROM base AS prod
-RUN pip install --no-cache-dir gunicorn uvicorn[standard]
-ENV DB_PATH=/var/lib/bot/bot.db
-CMD ["gunicorn","-k","uvicorn.workers.UvicornWorker","main:app","--bind","0.0.0.0:8080","--workers","2","--timeout","30"]
-```
-
----
-
-## 8. docker-compose.prod.yml
-
-```yaml
-services:
-  app:
-    build:
-      context: .
-      target: prod
-    env_file: .env.prod
-    volumes:
-      - ./docker_db:/var/lib/bot
-
-  caddy:
-    image: caddy:2
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-
-volumes:
-  caddy_data:
-  caddy_config:
-```
-
----
-
-## 9. Caddyfile
-
-```
-telegramexpensesbot.duckdns.org {
-    encode gzip
-    reverse_proxy app:8080
-}
-```
-
-Caddy will automatically:
-- Request HTTPS certificate
-- Redirect HTTP → HTTPS
-- Proxy traffic to `app`
-
----
-
-## 10. Deploy
+## 4. Deploy (build + run)
 
 ```bash
-docker-compose -f docker-compose.prod.yml up --build -d
+docker compose up --build -d
 ```
 
 Check logs:
+
 ```bash
-docker-compose -f docker-compose.prod.yml logs -f app
-docker-compose -f docker-compose.prod.yml logs -f caddy
+docker compose logs -f app
+```
+
+You should see the bot start and begin polling.
+
+---
+
+## 5. Test with Telegram (fastest checklist)
+
+1. Open Telegram and message your bot: `/start`
+2. Try a simple expense message, for example:
+   - `1000 supermercado ars`
+3. Request a report:
+   - `/report`
+
+If it replies, polling is working.
+
+---
+
+## 6. Health check (optional)
+
+The container also exposes a simple health endpoint on the server:
+
+```bash
+curl -s http://localhost:8080/health
 ```
 
 ---
 
-## 11. Test HTTPS
-
-```bash
-curl -I https://telegramexpensesbot.duckdns.org/health
-```
-Should return:
-```
-HTTP/2 200
-```
-
----
-
-## 12. Set Telegram Webhook
-
-```bash
-curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook"   -H "Content-Type: application/json"   -d "{\"url\":\"$WEBHOOK_URL\",\"secret_token\":\"$WEBHOOK_SECRET_TOKEN\"}"
-```
-
-Verify:
-```bash
-curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
-```
-
----
-
-## 13. Common Fixes
-
-| Problem | Cause | Solution |
-|--------|--------|---------|
-| Let’s Encrypt challenge failed | Port 80 blocked / DNS not updated | Fix Security Group + ensure DuckDNS IP matches server |
-| HTTPS returned 502 | App unreachable from proxy | Validate app is running via `curl http://app:8080/health` |
-| App hung on startup | Webhook set inside startup sync | Move webhook setup to background task |
- 
----
-
-## 14. Deploy Updates
+## 7. Update / restart
 
 ```bash
 git pull
-docker-compose -f docker-compose.prod.yml up --build -d
+docker compose up --build -d
 ```
 
----
-
-## 15. Stop Services
+Stop:
 
 ```bash
-docker-compose -f docker-compose.prod.yml down
+docker compose down
 ```
-
----
-
-✅ Your deployment is complete and stable.  
-Your bot now runs **24/7**, **with HTTPS**, **secure webhook**, and **persistent SQLite storage**.

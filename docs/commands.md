@@ -1,14 +1,27 @@
-# Deploy `.env_prod` via SCP
+# Useful commands (local server / long polling)
+
+## Run / logs
 
 ```bash
-scp -i ~/.ssh/telegram-bot-key.pem \
-  /home/prouser/repositories/money_manager/.env_prod \
-  ec2-user@3.23.129.217:/home/ec2-user/expenses_manager/.env_prod
+docker compose up --build -d
+docker compose logs -f app
 ```
 
-# Deploy in deb
+## Health check
 
-ngrok http 8080
+```bash
+curl -s http://localhost:8080/health
+```
 
-# ssh EC2
-ssh -i ~/.ssh/telegram-bot-key.pem ec2-user@3.23.129.217
+## Re-deploy after an update
+
+```bash
+git pull
+docker compose up --build -d
+```
+
+## Stop
+
+```bash
+docker compose down
+```
