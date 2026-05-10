@@ -1,12 +1,15 @@
+import asyncio
+import json
 import logging
 import os
+import urllib.request
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 import aiosqlite
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException, Request
 from telegram import BotCommand, InputFile, Update
 from telegram.ext import (
     Application,
@@ -40,6 +43,10 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 DB_PATH = os.getenv("DB_PATH", "")
 WHITELIST_IDS = [int(x) for x in os.getenv("WHITELIST_IDS", "").split(",") if x.strip()]
+PUBLIC_URL = os.getenv("PUBLIC_URL", "")  # optional: skip to use quick tunnel
+TUNNEL_METRICS_URL = os.getenv("TUNNEL_METRICS_URL", "http://tunnel:2999")
+WEBHOOK_PATH = os.getenv("WEBHOOK_URL", "/telegram/webhook")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET_TOKEN", "")
 DB_CONN = "db_conn"
 ACCESS_DENIED = "Access Denied"
 
@@ -47,16 +54,68 @@ ACCESS_DENIED = "Access Denied"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("telegram-boot")
 
-assert TOKEN
-assert DB_PATH
-assert WHITELIST_IDS
-if not TOKEN:
-    raise ValueError("TELEGRAM_BOT_TOKEN must be set in environment")
+assert TOKEN, "TELEGRAM_BOT_TOKEN must be set"
+assert DB_PATH, "DB_PATH must be set"
+assert WHITELIST_IDS, "WHITELIST_IDS must be set"
 
 # Ensure DB dir exists (if a directory is present)
 db_dir = os.path.dirname(DB_PATH)
 if db_dir:
     os.makedirs(db_dir, exist_ok=True)
+
+
+# -----------------------------------------------------------------------------
+# Tunnel URL resolution
+# -----------------------------------------------------------------------------
+async def resolve_public_url() -> str:
+    if PUBLIC_URL:
+        return PUBLIC_URL
+    loop = asyncio.get_running_loop()
+    logger.info("Waiting for tunnel URL...")
+    for attempt in range(60):
+        try:
+            raw = await loop.run_in_executor(
+                None,
+                lambda: urllib.request.urlopen(
+                    f"{TUNNEL_METRICS_URL}/quicktunnel", timeout=2
+                ).read(),
+            )
+            hostname = json.loads(raw)["hostname"]
+            url = f"https://{hostname}"
+            logger.info("Tunnel URL: %s", url)
+            return url
+        except Exception:
+            await asyncio.sleep(1)
+    raise RuntimeError("Tunnel did not provide a URL within 60s — is cloudflared running?")
+
+
+async def register_webhook(public_url: str) -> None:
+    """Wait for the tunnel to be reachable end-to-end, then register the webhook.
+    Runs as a background task so it doesn't block server startup."""
+    health_url = f"{public_url}/health"
+    loop = asyncio.get_running_loop()
+    logger.info("Checking end-to-end tunnel connectivity...")
+    for attempt in range(60):
+        try:
+            await loop.run_in_executor(
+                None, lambda: urllib.request.urlopen(health_url, timeout=5)
+            )
+            break
+        except Exception:
+            await asyncio.sleep(2)
+    else:
+        logger.warning("Tunnel unreachable after 120s — attempting webhook registration anyway")
+
+    try:
+        logger.info("Tunnel reachable — registering webhook with Telegram...")
+        await tg_app.bot.set_webhook(
+            url=public_url + WEBHOOK_PATH,
+            secret_token=WEBHOOK_SECRET or None,
+            drop_pending_updates=True,
+        )
+        logger.info("Bot ready at %s%s", public_url, WEBHOOK_PATH)
+    except Exception as e:
+        logger.error("Webhook registration failed: %s", e)
 
 
 # -----------------------------------------------------------------------------
@@ -301,9 +360,9 @@ async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 # -----------------------------------------------------------------------------
-# Telegram app (long polling)
+# Telegram app (webhook)
 # -----------------------------------------------------------------------------
-tg_app = Application.builder().token(TOKEN).build()
+tg_app = Application.builder().token(TOKEN).updater(None).build()
 tg_app.add_handler(CommandHandler("help", help_command))
 tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(CommandHandler("delete", delete_command))
@@ -348,21 +407,13 @@ async def lifespan(app: FastAPI):
         ]
     )
 
-    # Make sure we're not in webhook mode, then start polling.
-    try:
-        await tg_app.bot.delete_webhook(drop_pending_updates=True)
-    except Exception:
-        logger.exception("delete_webhook failed (ignored)")
-
-    await tg_app.updater.start_polling(drop_pending_updates=True)
+    public_url = await resolve_public_url()
+    webhook_task = asyncio.create_task(register_webhook(public_url))
 
     yield
 
-    try:
-        await tg_app.updater.stop()
-    except Exception as e:
-        logger.warning("polling stop failed (ignored): %s", e)
-
+    webhook_task.cancel()
+    await tg_app.bot.delete_webhook(drop_pending_updates=True)
     await tg_app.stop()
     await tg_app.shutdown()
     await db_conn.close()
@@ -371,10 +422,23 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+@app.post(WEBHOOK_PATH)
+async def telegram_webhook(
+    request: Request,
+    x_telegram_bot_api_secret_token: Optional[str] = Header(None),
+):
+    if WEBHOOK_SECRET and x_telegram_bot_api_secret_token != WEBHOOK_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    data = await request.json()
+    update = Update.de_json(data, tg_app.bot)
+    await tg_app.process_update(update)
+    return {"ok": True}
+
+
 @app.get("/health")
 async def health():
     return {"ok": True}
 
 
 # uvicorn main:app --host 0.0.0.0 --port 8080
-# docker compose up --build
+# docker compose up --build -d

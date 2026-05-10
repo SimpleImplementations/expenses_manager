@@ -8,3 +8,4 @@ __pycache__/
 /csv_exports
 /docker_db
 /.pytest_cache
+/.claude
