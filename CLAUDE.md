@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-When making a non-obvious architectural or technical decision, add a section to `docs/design.md` explaining what was chosen, why, and what alternatives were considered and rejected.
+When making a non-obvious architectural or technical decision, add a short section to `docs/design.md` (2–4 lines). Keep entries brief — only expand into multiple bullets if the decision is genuinely complex or was explicitly requested to be detailed.
 
 ## Secrets and environment files
 

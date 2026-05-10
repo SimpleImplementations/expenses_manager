@@ -42,6 +42,7 @@ The logs will show the assigned `trycloudflare.com` URL and confirm the webhook 
 ## Common commands
 
 ```bash
+docker compose up --build -d && docker compose logs -f   # redeploy and tail logs
 docker compose up --build -d   # start / redeploy
 docker compose logs -f         # tail logs
 docker compose down            # stop

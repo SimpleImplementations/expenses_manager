@@ -194,7 +194,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await msg.reply_text(
-        f'✅ Gasto de {to_int_if_whole(expense_extraction.value)} registrado en categoría "{expense_extraction.category}".'
+        f'✅ Gasto de {to_int_if_whole(expense_extraction.value)} {expense_extraction.currency} registrado en categoría "{expense_extraction.category}".'
     )
 
 
@@ -235,7 +235,7 @@ async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
     await msg.reply_text(
-        f'✅ Modificación exitosa. ✅ Gasto de {to_int_if_whole(expense_extraction.value)} registrado en categoría "{expense_extraction.category}".'
+        f'✅ Modificación exitosa. ✅ Gasto de {to_int_if_whole(expense_extraction.value)} {expense_extraction.currency} registrado en categoría "{expense_extraction.category}".'
     )
 
 
