@@ -22,6 +22,7 @@ from telegram.ext import (
 from src.db import (
     add_expense,
     add_global_category,
+    get_all_expenses,
     get_user_categories,
     get_user_expenses_report,
     init_db,
@@ -47,6 +48,7 @@ PUBLIC_URL = os.getenv("PUBLIC_URL", "")  # optional: skip to use quick tunnel
 TUNNEL_METRICS_URL = os.getenv("TUNNEL_METRICS_URL", "http://tunnel:2999")
 WEBHOOK_PATH = os.getenv("WEBHOOK_URL", "/telegram/webhook")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET_TOKEN", "")
+API_SECRET = os.getenv("API_SECRET", "")
 DB_CONN = "db_conn"
 ACCESS_DENIED = "Access Denied"
 
@@ -339,6 +341,17 @@ async def categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await msg.reply_text(f"📂 Tus categorías:\n{pretty}")
 
 
+async def tunnelurl_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg = update.message
+    if not msg:
+        return
+    if not is_whitelisted(update, WHITELIST_IDS):
+        await msg.reply_text(ACCESS_DENIED)
+        return
+    url = context.bot_data.get("public_url", "No disponible")
+    await msg.reply_text(url)
+
+
 async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.message
     if not msg or not msg.text:
@@ -370,6 +383,7 @@ tg_app.add_handler(CommandHandler("addcategory", addcategory_command))
 tg_app.add_handler(CommandHandler("removecategory", removecategory_command))
 tg_app.add_handler(CommandHandler("categories", categories_command))
 tg_app.add_handler(CommandHandler("report", csv_command))
+tg_app.add_handler(CommandHandler("tunnelurl", tunnelurl_command))
 tg_app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 tg_app.add_handler(
     MessageHandler(
@@ -408,6 +422,8 @@ async def lifespan(app: FastAPI):
     )
 
     public_url = await resolve_public_url()
+    app.state.public_url = public_url
+    tg_app.bot_data["public_url"] = public_url
     webhook_task = asyncio.create_task(register_webhook(public_url))
 
     yield
@@ -438,6 +454,20 @@ async def telegram_webhook(
 @app.get("/health")
 async def health():
     return {"ok": True}
+
+
+@app.get("/api/tunnel-url")
+async def tunnel_url():
+    return {"url": app.state.public_url}
+
+
+@app.get("/api/expenses")
+async def api_expenses(authorization: Optional[str] = Header(None)):
+    if API_SECRET:
+        if not authorization or authorization != f"Bearer {API_SECRET}":
+            raise HTTPException(status_code=403, detail="Forbidden")
+    conn = tg_app.bot_data[DB_CONN]
+    return await get_all_expenses(conn)
 
 
 # uvicorn main:app --host 0.0.0.0 --port 8080

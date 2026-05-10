@@ -1,4 +1,5 @@
 __pycache__/
+/dashboard/.streamlit/secrets.toml
 /.venv*
 /.vscode
 /.mypy_cache

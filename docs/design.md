@@ -13,3 +13,7 @@ On every startup, Cloudflare assigns a random `trycloudflare.com` HTTPS URL. The
 **Why not DuckDNS:** DuckDNS domains cannot use Cloudflare nameservers, so they are incompatible with named Cloudflare Tunnels. The old setup required manually updating the DuckDNS IP after each EC2 restart.
 
 **Escape hatch:** if a stable URL is ever needed (e.g. for a named tunnel), set `PUBLIC_URL` in `.env` and the app skips the metrics poll entirely and uses that value directly.
+
+## Streamlit dashboard
+
+A Streamlit container (`dashboard/`) runs alongside the bot and reads the SQLite DB directly via the shared Docker volume. Exposed on port 8501. Access is controlled by `STREAMLIT_PASSWORD` in `.env` (if unset, no auth). On EC2, restrict port 8501 in the security group to trusted IPs.

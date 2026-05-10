@@ -259,6 +259,22 @@ async def remove_expense_by_message_id(
     return cursor.rowcount > 0  # True if a row was deleted
 
 
+async def get_all_expenses(conn: aiosqlite.Connection) -> List[dict]:
+    cursor = await conn.execute(
+        """
+        SELECT user_id, date, value, category_name AS category, currency, message
+        FROM expenses
+        ORDER BY date
+        """
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [
+        {"user_id": r[0], "date": r[1], "value": r[2], "category": r[3], "currency": r[4], "message": r[5]}
+        for r in rows
+    ]
+
+
 async def get_user_expenses_report(
     conn: aiosqlite.Connection, user_id: int
 ) -> List[ExpenseRow]:
