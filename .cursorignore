@@ -16,3 +16,6 @@
 /docker_db/
 /csv_exports/
 /locale/
+secret*
+**/secret*
+!*example*

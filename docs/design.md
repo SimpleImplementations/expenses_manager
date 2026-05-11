@@ -12,6 +12,12 @@ On every startup, Cloudflare assigns a random `trycloudflare.com` HTTPS URL. The
 
 **Why not DuckDNS:** DuckDNS domains cannot use Cloudflare nameservers, so they are incompatible with named Cloudflare Tunnels. The old setup required manually updating the DuckDNS IP after each EC2 restart.
 
+## CI/CD
+
+Pushes to `main` trigger a GitHub Actions workflow that SSHes into the EC2, runs `git pull && docker compose up --build -d`. Credentials (host, user, SSH key, app directory) are stored as GitHub repository secrets.
+
+---
+
 **Escape hatch:** if a stable URL is ever needed (e.g. for a named tunnel), set `PUBLIC_URL` in `.env` and the app skips the metrics poll entirely and uses that value directly.
 
 ## Streamlit dashboard

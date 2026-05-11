@@ -12,3 +12,6 @@ __pycache__/
 csv_exports/
 db/*.sqlite
 db/*.db
+secret*
+**/secret*
+!*example*

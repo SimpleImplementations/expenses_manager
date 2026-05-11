@@ -10,3 +10,7 @@ __pycache__/
 /docker_db
 /.pytest_cache
 /.claude
+/docs/.secret.data
+secret*
+**/secret*
+!*example*

@@ -5,3 +5,5 @@ python-dotenv==1.2.*
 aiosqlite==0.21.*
 openai==2.7.*
 pytest==8.4.*
+pytest-asyncio==0.25.*
+httpx==0.28.*
