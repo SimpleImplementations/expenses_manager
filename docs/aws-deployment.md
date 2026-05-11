@@ -24,7 +24,7 @@ chmod 400 /path/to/your-key.pem
 **Connect:**
 
 ```bash
-ssh -i /path/to/your-key.pem ec2-user@<your-ec2-ip>
+ssh -i /path/to/your-key.pem ubuntu@<your-ec2-ip>
 ```
 
 > Find your public IP in AWS Console → EC2 → Instances → Public IPv4 address.
@@ -43,8 +43,10 @@ sudo usermod -aG docker "$USER" && newgrp docker
 
 ## One-time app setup
 
+Create a GitHub fine-grained token with **Contents: Read-only** for this repo, then clone:
+
 ```bash
-git clone <your-repo-url>
+git clone https://<your-github-token>@github.com/<your-username>/money_manager.git
 cd money_manager
 sudo mkdir -p /srv/botdata && sudo chown -R "$USER:$USER" /srv/botdata
 cp .env.example .env
@@ -82,8 +84,13 @@ Bot ready at https://xxxx.trycloudflare.com/telegram/webhook
 
 Verify:
 ```bash
-curl -s http://localhost:8080/health
+curl -s https://<your-tunnel-url>.trycloudflare.com/health
 # → {"ok":true}
+```
+
+The tunnel URL is printed in the logs. Alternatively from inside the container:
+```bash
+docker compose exec app curl -s http://localhost:8080/health
 ```
 
 Then message your bot `/start` on Telegram.
@@ -97,9 +104,9 @@ Add these secrets in GitHub → repo → Settings → Secrets → Actions:
 | Secret | Value |
 |---|---|
 | `EC2_HOST` | your EC2 public IP |
-| `EC2_USER` | `ec2-user` |
+| `EC2_USER` | `ubuntu` |
 | `EC2_SSH_KEY` | contents of your `.pem` file (`cat /path/to/your-key.pem`) |
-| `EC2_APP_DIR` | `/home/ec2-user/money_manager` |
+| `EC2_APP_DIR` | `/home/ubuntu/money_manager` |
 
 After that, every push to `main` SSHes into the EC2 and runs `git pull && docker compose up --build -d` automatically.
 
@@ -111,7 +118,7 @@ After that, every push to `main` SSHes into the EC2 and runs `git pull && docker
 docker compose up --build -d && docker compose logs -f   # redeploy and tail logs
 docker compose logs -f                                    # tail logs only
 docker compose down                                       # stop everything
-curl -s http://localhost:8080/health                      # health check
+curl -s https://<your-tunnel-url>.trycloudflare.com/health  # health check
 ```
 
 ---
