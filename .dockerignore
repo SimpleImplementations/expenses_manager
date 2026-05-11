@@ -6,8 +6,12 @@ __pycache__/
 .venv/
 .vscode/
 .env
+.env_prod
 .git/
 .gitignore
 csv_exports/
 db/*.sqlite
 db/*.db
+secret*
+**/secret*
+!*example*

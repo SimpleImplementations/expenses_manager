@@ -1,4 +1,5 @@
 __pycache__/
+/dashboard/.streamlit/secrets.toml
 /.venv*
 /.vscode
 /.mypy_cache
@@ -7,3 +8,9 @@ __pycache__/
 /db
 /csv_exports
 /docker_db
+/.pytest_cache
+/.claude
+/docs/.secret.data
+secret*
+**/secret*
+!*example*
