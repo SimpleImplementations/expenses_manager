@@ -76,20 +76,26 @@ with col_left:
     monthly = filtered.groupby(["month", "currency"])["value"].sum().reset_index()
     fig = px.bar(monthly, x="month", y="value", color="currency",
                  barmode="group", template=TEMPLATE,
-                 labels={"value": "Monto", "month": "Mes"})
+                 labels={"value": "Monto", "month": "Mes"},
+                 text_auto=".2s")
+    fig.update_layout(xaxis_tickangle=-45, legend_title_text="Moneda")
     st.plotly_chart(fig, use_container_width=True)
 
 with col_right:
     st.subheader("Por categoría")
-    by_cat = filtered.groupby("category")["value"].sum().reset_index()
-    fig = px.pie(by_cat, names="category", values="value", template=TEMPLATE)
+    by_cat = filtered.groupby("category")["value"].sum().reset_index().sort_values("value", ascending=False)
+    fig = px.pie(by_cat, names="category", values="value", template=TEMPLATE,
+                 hole=0.3)
+    fig.update_traces(textposition="inside", textinfo="percent+label")
     st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("Categorías por mes")
 cat_month = filtered.groupby(["month", "category"])["value"].sum().reset_index()
 fig = px.bar(cat_month, x="month", y="value", color="category",
              barmode="stack", template=TEMPLATE,
-             labels={"value": "Monto", "month": "Mes"})
+             labels={"value": "Monto", "month": "Mes"},
+             text_auto=".2s")
+fig.update_layout(xaxis_tickangle=-45, legend_title_text="Categoría")
 st.plotly_chart(fig, use_container_width=True)
 
 # ── Raw data ───────────────────────────────────────────────────────────────────
